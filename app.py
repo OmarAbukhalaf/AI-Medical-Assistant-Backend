@@ -1,8 +1,9 @@
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS  
-from utils import load_models, preprocess_image, predict
+import torch
+from utils import load_models, preprocess_image, predict_multimodal,predict_image,predict_text
 import os
-
+import numpy as np
 app = Flask(__name__)
 CORS(app)
 # Load models on startup
@@ -14,34 +15,34 @@ def home():
 
 @app.route('/predict', methods=['POST'])
 def predict_route():
-    if 'text' not in request.form or 'images' not in request.files:
-        return jsonify({"error": "Missing images or text input"}), 400
-
-    text_input = request.form['text']
+    text_input = request.form.get('text', '').strip()
     image_files = request.files.getlist('images')
 
     try:
-        all_probs = []
-        all_predictions = []
+        if text_input and image_files and image_files[0].filename != '':
+            # Both text and images
+            predicted_class, probs = predict_multimodal(image_model, rf_model, vectorizer, image_files, text_input)
+        elif text_input and (not image_files or image_files[0].filename == ''):
+            # Text only
+            predicted_class, probs = predict_text(rf_model, vectorizer, text_input)
 
-        for image_file in image_files:
-            image_tensor = preprocess_image(image_file)
-            predicted_class, probs = predict(image_model, rf_model, vectorizer, image_tensor, text_input)
-            all_predictions.append(predicted_class)
-            all_probs.append(probs[0])  # assuming probs is [[...]], take first element
+        elif image_files and image_files[0].filename != '':
+            # Images only
+            predicted_class, probs = predict_image(image_model, image_files)
 
-        # Example logic: average probabilities across all images
-        import numpy as np
-        avg_probs = np.mean(all_probs, axis=0)
-        final_predicted_class = int(np.argmax(avg_probs))
+        else:
+            return jsonify({"error": "No valid input provided (text or images required)"}), 400
 
         return jsonify({
-            "predicted_class": final_predicted_class,
-            "class_probabilities": avg_probs.tolist()
+            "predicted_class": predicted_class,
+            "class_probabilities": probs
         })
 
     except Exception as e:
+        import traceback
+        print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
+
 
 
 if __name__ == '__main__':
