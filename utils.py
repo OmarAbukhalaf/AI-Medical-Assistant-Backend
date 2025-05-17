@@ -9,7 +9,6 @@ import torch
 import torch.nn as nn
 from torchvision import models
 
-# Define the EfficientNetClassifier class (same as in Colab)
 class EfficientNetClassifier(nn.Module):
     def __init__(self, output_dim=12):
         super(EfficientNetClassifier, self).__init__()
@@ -23,16 +22,13 @@ class EfficientNetClassifier(nn.Module):
         return self.base_model(x)
 
 def load_models():
-    # Load TF-IDF vectorizer and RF model
     vectorizer = joblib.load("model_artifacts/vectorizer.pkl")
     rf_model = joblib.load("model_artifacts/rf_model.pkl")
 
-    # Initialize the model architecture
     image_model = EfficientNetClassifier(output_dim=12)
 
-    # Load the model weights
     image_model.load_state_dict(torch.load("model_artifacts/image_model.pth", map_location="cpu"))
-    image_model.eval()  # Set the model to evaluation mode
+    image_model.eval()  
 
     return vectorizer, rf_model, image_model
 
@@ -43,10 +39,9 @@ def preprocess_image(image_file):
         transforms.ToTensor()
     ])
     image = Image.open(image_file).convert("RGB")
-    return transform(image).unsqueeze(0)  # Shape: (1, 3, 224, 224)
+    return transform(image).unsqueeze(0)  
 
 def predict_multimodal(image_model, rf_model, vectorizer, image_files, text):
-    # Predict and average over all image files
     all_img_probs = []
     for file in image_files:
         image_tensor = preprocess_image(file)
@@ -55,13 +50,11 @@ def predict_multimodal(image_model, rf_model, vectorizer, image_files, text):
             probs = torch.softmax(logits, dim=1).numpy()
             all_img_probs.append(probs)
 
-    avg_img_probs = np.mean(np.vstack(all_img_probs), axis=0)  # shape (num_classes,)
+    avg_img_probs = np.mean(np.vstack(all_img_probs), axis=0) 
 
-    # Text probabilities
     text_features = vectorizer.transform([text])
-    text_probs = rf_model.predict_proba(text_features)[0]  # shape (num_classes,)
+    text_probs = rf_model.predict_proba(text_features)[0]  
 
-    # Weighted late fusion
     final_probs = 0.5 * avg_img_probs + 0.5 * text_probs
     predicted_class = int(np.argmax(final_probs))
     print(predicted_class,final_probs.tolist())
@@ -70,7 +63,7 @@ def predict_multimodal(image_model, rf_model, vectorizer, image_files, text):
 
 def predict_text(rf_model, vectorizer, text):
     text_features = vectorizer.transform([text])
-    text_probs = rf_model.predict_proba(text_features)[0]  # shape: (num_classes,)
+    text_probs = rf_model.predict_proba(text_features)[0]  
     predicted_class = int(np.argmax(text_probs))
     print(predicted_class,text_probs.tolist())
     return predicted_class, text_probs.tolist()
@@ -82,7 +75,7 @@ def predict_image(image_model, image_files):
         with torch.no_grad():
             img_logits = image_model(image_tensor)
             img_probs = torch.softmax(img_logits, dim=1).detach().cpu().numpy()
-        all_probs.append(img_probs[0])  # assuming shape (1, num_classes)
+        all_probs.append(img_probs[0]) 
     
     avg_probs = np.mean(all_probs, axis=0)
     predicted_class = int(np.argmax(avg_probs))
